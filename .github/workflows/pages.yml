@@ -142,7 +142,7 @@ jobs:
           sed -i "s/rp-shell-v1/rp-shell-${GITHUB_SHA::8}/" _site/sw.js
           du -sh _site
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
