@@ -83,7 +83,7 @@ jobs:
       - name: Ortsdaten aus dem Cache
         id: cache
         if: ${{ !inputs.rebuild }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: data
           key: osm-data-${{ steps.month.outputs.m }}-${{ hashFiles('scripts/build_data.py') }}-${{ env.EXTRACTS }}
@@ -129,7 +129,7 @@ jobs:
 
       - name: Ortsdaten im Cache ablegen
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: data
           key: osm-data-${{ steps.month.outputs.m }}-${{ hashFiles('scripts/build_data.py') }}-${{ env.EXTRACTS }}
