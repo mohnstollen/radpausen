@@ -1,0 +1,160 @@
+name: Tests, Ortsdaten und Seite
+
+# 1. test:   Browser-Tests der App und Test der Datenaufbereitung (immer, auf jedem Branch)
+# 2. build:  Ortsdaten aus OpenStreetMap bauen und zusammen mit der App als Seite packen
+#            (nur auf dem Standard-Branch). Die Ortsdaten werden je Monat einmal gebaut und
+#            dazwischen aus dem Actions-Cache genommen; „Run workflow“ mit „rebuild“ erzwingt
+#            einen Neubau.
+# 3. deploy: auf GitHub Pages veröffentlichen
+#
+# Einmalig nötig: Settings → Pages → Source: „GitHub Actions“.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    # Am 2. jedes Monats, 03:23 UTC (Geofabrik aktualisiert täglich; einmal im Monat reicht)
+    - cron: '23 3 2 * *'
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: 'Ortsdaten neu bauen, auch wenn sie für diesen Monat schon im Cache liegen'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Geofabrik-Auszüge, mehrere durch Leerzeichen getrennt (z. B. "europe/germany europe/austria")
+  EXTRACTS: europe/germany
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Datenaufbereitung testen
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r scripts/requirements.txt
+          .venv/bin/python scripts/build_data.py tests/fixtures/sample.osm /tmp/testdata --version 2026-11-01
+          # Die Testdaten im Repository müssen zum Skript passen
+          diff -r /tmp/testdata tests/fixtures/data
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Browser installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser-Tests
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Monat bestimmen
+        id: month
+        run: echo "m=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Ortsdaten aus dem Cache
+        id: cache
+        if: ${{ !inputs.rebuild }}
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: osm-data-${{ steps.month.outputs.m }}-${{ hashFiles('scripts/build_data.py') }}-${{ env.EXTRACTS }}
+
+      - name: Werkzeuge installieren
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends osmium-tool
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r scripts/requirements.txt
+
+      - name: OSM-Auszüge laden und filtern
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          parts=()
+          for x in $EXTRACTS; do
+            f="src-${x//\//-}.osm.pbf"
+            curl -fsSL --retry 3 --retry-delay 10 -o "$f" "https://download.geofabrik.de/${x}-latest.osm.pbf"
+            ls -lh "$f"
+            # Nur was die App braucht (inkl. der Knoten, die Flächen wie Friedhöfe bilden)
+            # und die Bundesländer-Grenzen für Feiertage in Öffnungszeiten
+            osmium tags-filter -O -o "flt-${f}" "$f" \
+              nwr/shop=bakery,pastry,supermarket,convenience,bicycle \
+              nwr/amenity=fast_food,drinking_water,water_point,fountain,toilets,grave_yard,shelter,bench,bicycle_repair_station \
+              nwr/man_made=water_tap,water_well \
+              n/natural=spring \
+              nwr/landuse=cemetery \
+              nwr/leisure=picnic_table \
+              nwr/tourism=picnic_site,wilderness_hut \
+              r/admin_level=4
+            rm "$f"
+            parts+=("flt-${f}")
+          done
+          if [ "${#parts[@]}" -gt 1 ]; then osmium merge -O -o filtered.osm.pbf "${parts[@]}"; else mv "${parts[0]}" filtered.osm.pbf; fi
+          ls -lh filtered.osm.pbf
+
+      - name: Kacheln bauen
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          .venv/bin/python scripts/build_data.py filtered.osm.pbf data --version "$(date -u +%Y-%m-%d)"
+          du -sh data; ls data/t | wc -l
+
+      - name: Ortsdaten im Cache ablegen
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: osm-data-${{ steps.month.outputs.m }}-${{ hashFiles('scripts/build_data.py') }}-${{ env.EXTRACTS }}
+
+      - name: Seite zusammenstellen
+        run: |
+          mkdir -p _site
+          cp -r index.html sw.js manifest.webmanifest icon-*.png vendor data _site/
+          # Neue App-Version → Service Worker lädt die App neu
+          sed -i "s/rp-shell-v1/rp-shell-${GITHUB_SHA::8}/" _site/sw.js
+          du -sh _site
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

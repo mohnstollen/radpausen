@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Radpausen</title>
+<meta name="description" content="GPX-Strecke laden und Bäcker, Supermärkte, Wasser, Schutzhütten und mehr entlang der Radroute sehen – offline, mit Öffnungszeiten bei Ankunft.">
+<meta name="theme-color" content="#1f6f4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+:root{--bg:#f4f5f2;--card:#fff;--fg:#1d2320;--mut:#66706a;--line:#dfe3dd;--acc:#1f6f4a;--acc-fg:#fff;--warn:#a2560b;--warn-bg:#fff3e0;--ok:#1d7a3e;--bad:#b3261e;--chip:#eef1ec;--shadow:0 1px 3px rgba(0,0,0,.12)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121513;--card:#1c201d;--fg:#e6ebe7;--mut:#9aa59e;--line:#2c322e;--acc:#4fb382;--acc-fg:#0d1a12;--warn:#f0a655;--warn-bg:#33240f;--ok:#6ccf8f;--bad:#f2867d;--chip:#262c28;--shadow:0 1px 3px rgba(0,0,0,.5)}}
+:root[data-theme=dark]{--bg:#121513;--card:#1c201d;--fg:#e6ebe7;--mut:#9aa59e;--line:#2c322e;--acc:#4fb382;--acc-fg:#0d1a12;--warn:#f0a655;--warn-bg:#33240f;--ok:#6ccf8f;--bad:#f2867d;--chip:#262c28;--shadow:0 1px 3px rgba(0,0,0,.5)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));background:var(--acc);color:var(--acc-fg)}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button,header label.btn{background:rgba(255,255,255,.16);border:0;border-radius:8px;padding:7px 11px;color:inherit;display:inline-flex;align-items:center;gap:6px;min-height:36px}
+header button[aria-pressed=true]{background:rgba(255,255,255,.4)}
+#file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+main{flex:1;display:flex;min-height:0;position:relative}
+#map{flex:1;min-width:0}
+#side{width:100%;overflow:auto;display:flex;flex-direction:column}
+@media(max-width:899px){body[data-view=map] #side{display:none}body[data-view=list] #map{display:none}}
+@media(min-width:900px){#side{width:400px;border-left:1px solid var(--line)}nav{display:none!important}}
+nav{display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;padding:11px 0;font-weight:600;color:var(--mut)}
+nav button[aria-pressed=true]{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+.card{background:var(--card);border-radius:10px;box-shadow:var(--shadow);margin:10px 10px 0;padding:10px 12px}
+.mut{color:var(--mut)}
+.small{font-size:13px}
+#empty{padding:24px 20px;max-width:560px;margin:0 auto}
+#empty h2{margin:.2em 0 .4em;font-size:20px}
+#empty ul{padding-left:1.2em;margin:.4em 0}
+.primary{background:var(--acc);color:var(--acc-fg);border:0;border-radius:10px;padding:11px 16px;font-weight:600;display:inline-flex;gap:8px;align-items:center}
+.ghost{background:var(--chip);border:0;border-radius:8px;padding:7px 11px}
+#sum h2{font-size:16px;margin:0 0 2px;overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--chip);border-radius:999px;padding:4px 10px 4px 7px;font-size:13px}
+.chip[aria-pressed=false]{opacity:.45;background:none}
+.chip b{font-weight:600}
+.gap{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:6px 9px;margin-top:8px;font-size:13px}
+#live{background:var(--acc);color:var(--acc-fg)}
+#status{font-size:13px}
+#status:empty{display:none}
+ol#pois{list-style:none;margin:10px 0 16px;padding:0}
+ol#pois li{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--card);cursor:pointer}
+ol#pois li:first-child{border-top:1px solid var(--line)}
+ol#pois li.past{opacity:.45}
+ol#pois li:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.km{width:46px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;padding-top:6px}
+.km small{display:block;font-weight:400;color:var(--mut);font-size:11px}
+.ic{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:18px;background:var(--c);box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.tx{min-width:0;flex:1}
+.tx b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tx span{display:block;color:var(--mut);font-size:13px}
+.open,.tx .open{color:var(--ok);font-weight:600}
+.closed,.tx .closed{color:var(--bad);font-weight:600}
+.mk{width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;display:grid;place-items:center;font-size:15px;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.mk.cl{filter:grayscale(.8);opacity:.75}
+.me{width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#2f7bf5;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,123,245,.25)}
+.leaflet-container{background:var(--bg);font:inherit}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--fg)}
+.leaflet-popup-content{margin:10px 12px;min-width:200px}
+.pp b{font-size:15px}
+.pp .row{margin-top:4px}
+.pp .acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pp .acts a{background:var(--chip);color:var(--fg);text-decoration:none;border-radius:7px;padding:5px 9px;font-size:13px}
+dialog{border:0;border-radius:14px;padding:0;background:var(--card);color:var(--fg);width:min(480px,calc(100% - 24px));max-height:calc(100% - 32px);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{padding:14px 16px 16px;overflow:auto;overflow-x:hidden}
+dialog h2{margin:0 0 8px;font-size:18px}
+dialog h3{margin:16px 0 6px;font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
+.cats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.cats label{display:flex;gap:7px;align-items:center;background:var(--chip);border-radius:8px;padding:7px 8px;font-size:14px;min-width:0;overflow-wrap:break-word;hyphens:manual}
+.field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+.field input[type=number],.field input[type=datetime-local],.field select{background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:60%}
+.field input[type=range]{flex:1;accent-color:var(--acc)}
+#tours{list-style:none;padding:0;margin:0}
+#tours li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+#tours li button.open-t{flex:1;text-align:left;background:none;border:0;padding:4px 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg-foot{display:flex;justify-content:flex-end;margin-top:14px}
+#drop{position:fixed;inset:0;background:rgba(31,111,74,.85);color:#fff;display:none;place-items:center;font-size:22px;font-weight:600;z-index:2000}
+body.dragging #drop{display:grid}
+.att{font-size:11px;padding:6px 12px 14px}
+</style>
+</head>
+<body data-view="map">
+<header>
+  <h1 id="title">Radpausen</h1>
+  <button id="locate" type="button" aria-pressed="false" aria-label="Mein Standort auf der Strecke verfolgen" title="Unterwegs: eigenen Standort verfolgen" hidden>📍</button>
+  <label class="btn" for="file" title="GPX-Datei öffnen"><span aria-hidden="true">📂</span><span>GPX</span></label>
+  <input id="file" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+  <button id="opts" type="button" aria-label="Einstellungen" title="Einstellungen">⚙️</button>
+</header>
+<main>
+  <div id="map" role="region" aria-label="Karte"></div>
+  <section id="side" aria-label="Orte entlang der Strecke">
+    <div id="empty">
+      <h2>Pausen entlang deiner Radroute</h2>
+      <p>Öffne eine GPX-Datei (aus Komoot, bikerouter, Strava …). Radpausen zeigt dir, was am Weg liegt:</p>
+      <ul id="emptycats"></ul>
+      <p>Mit Kilometer, Abstand zur Strecke und ob bei deiner Ankunft geöffnet ist. Die Ortsdaten werden für die Strecke einmal geladen und funktionieren danach ohne Netz.</p>
+      <p><label class="primary" for="file">📂 GPX-Datei öffnen</label></p>
+      <p class="mut small">Tipp: Auf Android die App installieren („Zum Startbildschirm hinzufügen“), dann kannst du GPX-Dateien direkt mit „Teilen → Radpausen“ öffnen.</p>
+    </div>
+    <div id="tour" hidden>
+      <div id="live" class="card" hidden></div>
+      <div id="sum" class="card"></div>
+      <div id="status" class="card mut" role="status" aria-live="polite"></div>
+      <ol id="pois"></ol>
+      <div class="att mut">Orte und Karte © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> · <span id="dataver"></span></div>
+    </div>
+  </section>
+</main>
+<nav aria-label="Ansicht"><button type="button" data-v="map" aria-pressed="true">Karte</button><button type="button" data-v="list" aria-pressed="false">Liste</button></nav>
+<div id="drop">GPX-Datei hier ablegen</div>
+
+<dialog id="dlg">
+  <form method="dialog">
+    <h2>Einstellungen</h2>
+    <h3>Was soll angezeigt werden?</h3>
+    <div class="cats" id="catbox"></div>
+    <h3>Strecke</h3>
+    <div class="field"><label for="corr">Abstand zur Strecke</label><output id="corrv"></output></div>
+    <input id="corr" type="range" min="50" max="1000" step="50" style="width:100%;accent-color:var(--acc)">
+    <div class="field"><label for="speed">Ø Geschwindigkeit (km/h)</label><input id="speed" type="number" min="5" max="45" step="1" inputmode="numeric"></div>
+    <div class="field"><label for="start">Abfahrt</label><input id="start" type="datetime-local"></div>
+    <div class="field"><label for="gapf">Warnen bei Lücke ohne Essen ab</label><select id="gapf"><option value="0">aus</option><option>15</option><option>20</option><option>25</option><option>30</option><option>40</option><option>50</option></select></div>
+    <div class="field"><label for="gapw">… ohne Wasser ab (km)</label><select id="gapw"><option value="0">aus</option><option>10</option><option>15</option><option>20</option><option>25</option><option>30</option><option>40</option></select></div>
+    <h3>Gespeicherte Touren</h3>
+    <ul id="tours"></ul>
+    <p class="mut small" id="notours">Noch keine Touren.</p>
+    <h3>Export</h3>
+    <p class="small mut" style="margin:0 0 6px">Strecke mit den angezeigten Orten als Wegpunkte, z. B. für den Radcomputer.</p>
+    <button type="button" class="ghost" id="export">GPX mit Orten speichern</button>
+    <h3>Ortsdaten</h3>
+    <p class="small mut" id="datainfo" style="margin:0 0 6px"></p>
+    <button type="button" class="ghost" id="purge">Gespeicherte Ortsdaten löschen</button>
+    <div class="dlg-foot"><button class="primary" value="ok">Fertig</button></div>
+  </form>
+</dialog>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/opening_hours.min.js"></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LS={get(k,d){try{const v=localStorage.getItem('rp.'+k);return v==null?d:JSON.parse(v)}catch{return d}},
+  set(k,v){try{localStorage.setItem('rp.'+k,JSON.stringify(v));return true}catch{return false}}};
+const DATA=window.RP_DATA||'data/';
+const DATA_CACHE='rp-data';
+
+/* Kategorien: Kürzel wie in scripts/build_data.py */
+const CAT={
+  bk:{e:'🥐',l:'Bäcker',c:'#f0c27b',food:1},
+  sm:{e:'🛒',l:'Supermarkt',c:'#8fd19e',food:1},
+  ff:{e:'🍔',l:'Fast Food',c:'#f3a29a',food:1},
+  wa:{e:'🚰',l:'Trinkwasser',c:'#8cc8f0',water:1},
+  fr:{e:'🪦',l:'Friedhof',c:'#c3cbd3',water:1,hint:'meist mit Wasserhahn'},
+  sh:{e:'🛖',l:'Schutzhütte',c:'#d9bf94'},
+  pi:{e:'🧺',l:'Picknickplatz',c:'#c5dc8e'},
+  be:{e:'🪑',l:'Bank',c:'#ddd3c2'},
+  bs:{e:'🚲',l:'Fahrradladen',c:'#a9c1f2'},
+  rp:{e:'🔧',l:'Reparaturstation',c:'#c4b5f0'}
+};
+const ORDER=Object.keys(CAT);
+
+const nextQuarter=()=>{const d=new Date();d.setSeconds(0,0);d.setMinutes(Math.ceil((d.getMinutes()+1)/15)*15);return d.getTime()};
+const S={
+  cats:Object.assign(Object.fromEntries(ORDER.map(k=>[k,k!=='be'])),LS.get('cats',{})),
+  corr:LS.get('corr',300),speed:LS.get('speed',18),gapf:LS.get('gapf',25),gapw:LS.get('gapw',20),
+  start:nextQuarter(),track:null,pois:[],meta:null,me:null,live:false,curKm:null,view:'map'
+};
+
+/* ---------- Geometrie ---------- */
+const RAD=Math.PI/180;
+function dist(a,b){const dl=(b[0]-a[0])*RAD,dn=(b[1]-a[1])*RAD,h=Math.sin(dl/2)**2+Math.cos(a[0]*RAD)*Math.cos(b[0]*RAD)*Math.sin(dn/2)**2;return 12742.0176*Math.asin(Math.min(1,Math.sqrt(h)))}
+const GC=[0.01,0.015]; // Rasterzellen für die Streckenabschnitte (~1,1 km)
+const cellOf=(lat,lon)=>Math.floor(lat/GC[0])+':'+Math.floor(lon/GC[1]);
+function prepTrack(t){
+  const p=t.pts,cum=[0];for(let i=1;i<p.length;i++)cum.push(cum[i-1]+dist(p[i-1],p[i]));
+  t.cum=cum;t.km=cum[cum.length-1]||0;
+  const g=new Map();
+  for(let i=1;i<p.length;i++){
+    const a=p[i-1],b=p[i],y0=Math.floor(Math.min(a[0],b[0])/GC[0]),y1=Math.floor(Math.max(a[0],b[0])/GC[0]),x0=Math.floor(Math.min(a[1],b[1])/GC[1]),x1=Math.floor(Math.max(a[1],b[1])/GC[1]);
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const k=y+':'+x;let l=g.get(k);if(!l)g.set(k,l=[]);l.push(i)}
+  }
+  t.grid=g;
+  // Anstieg mit 4 m Hysterese gegen Messrauschen
+  let up=0,ref=null;for(const q of p){if(!isFinite(q[2]))continue;if(ref==null){ref=q[2];continue}if(q[2]>ref+4){up+=q[2]-ref;ref=q[2]}else if(q[2]<ref-4)ref=q[2]}
+  t.up=Math.round(up);
+  return t;
+}
+// Abstand (km), Position entlang der Strecke (km) und Seite (+1 rechts, −1 links) eines Punkts
+function project(t,q){
+  const y=Math.floor(q[0]/GC[0]),x=Math.floor(q[1]/GC[1]),seen=new Set();
+  const kx=111.32*Math.cos(q[0]*RAD),ky=110.574;let best={d:Infinity,km:0,side:0};
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    for(const i of t.grid.get((y+dy)+':'+(x+dx))||[]){
+      if(seen.has(i))continue;seen.add(i);
+      const a=t.pts[i-1],b=t.pts[i];
+      const ax=(q[1]-a[1])*kx,ay=(q[0]-a[0])*ky,sx=(b[1]-a[1])*kx,sy=(b[0]-a[0])*ky,l2=sx*sx+sy*sy;
+      const u=l2?Math.min(1,Math.max(0,(ax*sx+ay*sy)/l2)):0,ex=ax-u*sx,ey=ay-u*sy,d=Math.hypot(ex,ey);
+      if(d<best.d)best={d,km:t.cum[i-1]+u*(t.cum[i]-t.cum[i-1]),side:sx*ay-sy*ax>0?-1:1};
+    }
+  }
+  return best;
+}
+
+/* ---------- GPX ---------- */
+function parseGpx(text,fname){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('Die Datei ist keine gültige GPX-Datei.');
+  const tag=(el,n)=>el.getElementsByTagNameNS('*',n);
+  let nodes=[...tag(doc,'trkpt')];if(!nodes.length)nodes=[...tag(doc,'rtept')];
+  const raw=nodes.map(n=>[+n.getAttribute('lat'),+n.getAttribute('lon'),parseFloat(tag(n,'ele')[0]?.textContent)]).filter(p=>isFinite(p[0])&&isFinite(p[1]));
+  if(raw.length<2)throw new Error('In der Datei ist keine Strecke (Track oder Route) enthalten.');
+  const host=tag(doc,'trk')[0]||tag(doc,'rte')[0]||tag(doc,'metadata')[0];
+  const nm=host&&[...host.children].find(c=>c.localName==='name')?.textContent.trim();
+  return {name:nm||String(fname||'Tour').replace(/\.gpx$/i,''),pts:thin(raw,0.01)};
+}
+function thin(p,minKm){const r=[p[0]];for(let i=1;i<p.length-1;i++)if(dist(r[r.length-1],p[i])>=minKm)r.push(p[i]);r.push(p[p.length-1]);return r}
+
+/* ---------- Gespeicherte Touren (Punkte kompakt: lat/lon ·1e5, Höhe gerundet) ---------- */
+const packPts=p=>p.map(q=>[Math.round(q[0]*1e5),Math.round(q[1]*1e5),isFinite(q[2])?Math.round(q[2]):null]);
+const unpackPts=p=>p.map(q=>[q[0]/1e5,q[1]/1e5,q[2]==null?NaN:q[2]]);
+function saveTour(t){
+  let tours=LS.get('tours',[]).filter(x=>x.id!==t.id);
+  tours.unshift({id:t.id,name:t.name,km:Math.round(t.km*10)/10,t:Date.now(),pts:packPts(thin(t.pts,0.02))});
+  tours=tours.slice(0,12);
+  while(tours.length&&!LS.set('tours',tours))tours.pop();
+  LS.set('cur',t.id);
+}
+
+/* ---------- Ortsdaten: meta.json + Kacheln, im Cache für offline ---------- */
+async function getMeta(){
+  try{
+    const r=await fetch(DATA+'meta.json',{cache:'no-cache'});
+    if(r.ok){
+      const m=await r.json(),old=LS.get('meta',null);
+      if(old&&old.v!==m.v)await purgeData(false);
+      LS.set('meta',m);return m;
+    }
+  }catch{}
+  return LS.get('meta',null);
+}
+async function purgeData(all=true){try{await caches.delete(DATA_CACHE)}catch{}if(all)LS.set('meta',null)}
+const cacheOpen=()=>('caches' in window?caches.open(DATA_CACHE).catch(()=>null):Promise.resolve(null));
+async function getTile(c,k){
+  const url=new URL(DATA+'t/'+k+'.json',location.href).href;
+  if(c){try{const hit=await c.match(url);if(hit)return await hit.json()}catch{}}
+  const r=await fetch(url);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  if(c){try{await c.put(url,r.clone())}catch{}}
+  return r.json();
+}
+function tilesFor(t,meta){
+  const have=new Set(meta.tiles),cell=meta.cell||0.1,out=new Set(),dy=S.corr/1000/110.574;
+  for(const p of t.pts){
+    const dx=dy*110.574/(111.32*Math.cos(p[0]*RAD));
+    for(const la of[p[0]-dy,p[0]+dy])for(const lo of[p[1]-dx,p[1]+dx]){
+      const k=Math.floor(la/cell+1e-9)+'_'+Math.floor(lo/cell+1e-9);if(have.has(k))out.add(k);
+    }
+  }
+  return [...out];
+}
+let loadSeq=0;
+async function loadPois(){
+  const t=S.track;if(!t)return;
+  const seq=++loadSeq;
+  status('Lade Ortsdaten …');
+  const meta=S.meta||(S.meta=await getMeta());
+  if(seq!==loadSeq)return;
+  if(!meta){status('Ortsdaten nicht erreichbar. Beim ersten Öffnen einer Strecke ist Internet nötig.');S.pois=[];render();return}
+  const keys=tilesFor(t,meta),c=await cacheOpen(),rows=[];let done=0,miss=0;
+  const work=keys.slice();
+  async function worker(){
+    while(work.length){
+      const k=work.shift();
+      try{const d=await getTile(c,k);for(const r of d.p)rows.push([r,d.cc,d.st])}catch{miss++}
+      done++;if(seq===loadSeq&&keys.length>3)status(`Lade Ortsdaten … ${done} von ${keys.length}`);
+    }
+  }
+  await Promise.all(Array.from({length:6},worker));
+  if(seq!==loadSeq)return;
+  const lim=S.corr/1000,res=[];
+  for(const [r,cc,st] of rows){
+    const [c,lat,lon,n,o,x]=r;if(!CAT[c])continue;
+    const pr=project(t,[lat,lon]);if(pr.d>lim)continue;
+    res.push({c,lat,lon,n:n||'',o:o||'',x:x||'',km:pr.km,off:pr.d,side:pr.side,cc,st});
+  }
+  res.sort((a,b)=>a.km-b.km);
+  S.pois=res;
+  status(miss?`${miss} von ${keys.length} Datenkacheln fehlen (ohne Netz?). Die Liste ist unvollständig.`:'');
+  $('#dataver').textContent=`Datenstand ${fmtDate(meta.v)}`;
+  render();
+}
+
+/* ---------- Öffnungszeiten bei Ankunft ---------- */
+const ohCache=new Map();
+function ohOf(p){
+  if(!p.o||typeof opening_hours!=='function')return null;
+  const k=p.o+'|'+(p.st||'');
+  if(!ohCache.has(k)){
+    let v=null;
+    try{v=new opening_hours(p.o,{lat:String(p.lat),lon:String(p.lon),address:{country_code:p.cc||'de',state:p.st||''}},{locale:'de'})}catch{v=null}
+    ohCache.set(k,v);
+  }
+  return ohCache.get(k);
+}
+const hm=d=>d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+const wd=d=>d.toLocaleDateString('de-DE',{weekday:'short'}).replace('.','');
+const when=(d,ref)=>sameDay(d,ref)?hm(d):wd(d)+' '+hm(d);
+function hoursAt(p,arr){
+  const oh=ohOf(p);if(!oh)return null;
+  try{
+    const d=new Date(arr);
+    if(oh.getUnknown(d))return{cls:'',txt:oh.getComment(d)||'Öffnungszeit unklar'};
+    const open=oh.getState(d),nx=oh.getNextChange(d,new Date(arr+8*864e5));
+    if(open)return{open,cls:'open',txt:nx?`offen bis ${when(nx,d)}`:'durchgehend offen'};
+    return{open,cls:'closed',txt:nx?`zu · öffnet ${when(nx,d)}`:'geschlossen'};
+  }catch{return null}
+}
+// Ankunftszeit: unterwegs ab jetzt und eigener Position, sonst ab der gewählten Abfahrt
+function arrival(km){
+  if(S.live&&S.curKm!=null)return Date.now()+Math.max(0,km-S.curKm)/S.speed*36e5;
+  return S.start+km/S.speed*36e5;
+}
+
+/* ---------- Anzeige ---------- */
+const fmtKm=v=>v.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmtM=km=>km<1?Math.round(km*1000/10)*10+' m':fmtKm(km)+' km';
+const fmtDate=v=>{const d=new Date(v);return isNaN(d)?String(v):d.toLocaleDateString('de-DE')};
+const label=p=>p.n||CAT[p.c].l;
+function status(s){$('#status').textContent=s}
+
+function gaps(){
+  const t=S.track,out=[];
+  for(const [key,lim,what] of[['food',S.gapf,'kein Essen'],['water',S.gapw,'kein Wasser']]){
+    if(!+lim)continue;
+    const cats=ORDER.filter(c=>CAT[c][key]&&S.cats[c]);if(!cats.length)continue;
+    const kms=[0,...S.pois.filter(p=>cats.includes(p.c)).map(p=>p.km),t.km];
+    for(let i=1;i<kms.length;i++)if(kms[i]-kms[i-1]>=+lim)out.push({a:kms[i-1],b:kms[i],what,cats});
+  }
+  return out.sort((x,y)=>x.a-y.a);
+}
+function render(){
+  const t=S.track;
+  $('#empty').hidden=!!t;$('#tour').hidden=!t;$('#locate').hidden=!t;
+  $('#title').textContent=t?t.name:'Radpausen';
+  document.title=t?t.name+' · Radpausen':'Radpausen';
+  if(!t){if(S.view!=='list')setView('list');drawMap();return}
+  const vis=S.pois.filter(p=>S.cats[p.c]),cnt={};for(const p of S.pois)cnt[p.c]=(cnt[p.c]||0)+1;
+  const dur=t.km/S.speed*36e5,st=new Date(S.start),en=new Date(S.start+dur);
+  const h=Math.floor(dur/36e5),m=Math.round(dur%36e5/6e4);
+  $('#sum').innerHTML=`<h2>${esc(t.name)}</h2>
+    <div class="mut small">${fmtKm(t.km)} km${t.up?` · ${t.up.toLocaleString('de-DE')} Hm`:''} · ca. ${h} h ${String(m).padStart(2,'0')} min bei ${S.speed} km/h<br>
+    Abfahrt ${when(st,new Date())} → Ankunft ${when(en,st)} <button type="button" class="ghost small" id="chg" style="padding:2px 8px;margin-left:4px">ändern</button></div>
+    <div class="chips">${ORDER.filter(c=>cnt[c]||S.cats[c]).map(c=>`<button type="button" class="chip" data-c="${c}" aria-pressed="${!!S.cats[c]}" title="${esc(CAT[c].l)} ein-/ausblenden"><span aria-hidden="true">${CAT[c].e}</span>${esc(CAT[c].l)} <b>${cnt[c]||0}</b></button>`).join('')}</div>
+    ${gaps().map(g=>`<div class="gap">⚠️ km ${fmtKm(g.a)}–${fmtKm(g.b)}: ${g.what} (${fmtKm(g.b-g.a)} km)</div>`).join('')}`;
+  renderLive(vis);
+  const now=new Date();
+  $('#pois').innerHTML=vis.length?vis.map((p,i)=>{
+    const arr=arrival(p.km),hr=hoursAt(p,arr),past=S.live&&S.curKm!=null&&p.km<S.curKm-0.15;
+    const ahead=S.live&&S.curKm!=null&&!past?`<small>in ${fmtM(p.km-S.curKm)}</small>`:'';
+    const sub=[p.n?CAT[p.c].l:'',p.x,p.c==='fr'&&!p.x?CAT.fr.hint:''].filter(Boolean).join(' · ');
+    const line=`${fmtM(p.off)} ${p.off<0.02?'an der Strecke':p.side>0?'rechts':'links'} · an ${when(new Date(arr),now)}`;
+    return `<li tabindex="0" data-i="${S.pois.indexOf(p)}" class="${past?'past':''}"><div class="km">${fmtKm(p.km)}${ahead}</div><div class="ic" style="--c:${CAT[p.c].c}" aria-hidden="true">${CAT[p.c].e}</div><div class="tx"><b>${esc(label(p))}</b>${sub?`<span>${esc(sub)}</span>`:''}<span>${line}</span>${hr?`<span class="${hr.cls}">${esc(hr.txt)}</span>`:''}</div></li>`;
+  }).join(''):`<li class="mut" style="cursor:default">Keine Orte der gewählten Arten bis ${S.corr} m neben der Strecke.</li>`;
+  drawMap();
+}
+function renderLive(vis){
+  const el=$('#live');
+  if(!S.live){el.hidden=true;return}
+  el.hidden=false;
+  if(S.curKm==null){el.textContent=S.me?'📍 Du bist gerade nicht auf der Strecke.':'📍 Suche Standort …';return}
+  const nxt={};for(const p of vis)if(p.km>=S.curKm-0.05&&!nxt[p.c])nxt[p.c]=p;
+  const parts=ORDER.filter(c=>nxt[c]).slice(0,4).map(c=>`${CAT[c].e} ${fmtM(nxt[c].km-S.curKm)}`);
+  el.innerHTML=`<b>📍 km ${fmtKm(S.curKm)}</b> von ${fmtKm(S.track.km)}${parts.length?'<br>Nächste: '+parts.join(' · '):''}`;
+}
+
+/* ---------- Karte ---------- */
+const map=L.map('map',{zoomControl:true,attributionControl:true}).setView([51.1,10.4],6);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,crossOrigin:true,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+const trackLayer=L.layerGroup().addTo(map),poiLayer=L.layerGroup().addTo(map);let meMarker=null,fitted=null;
+const markers=new Map();
+function drawMap(){
+  trackLayer.clearLayers();poiLayer.clearLayers();markers.clear();
+  const t=S.track;if(!t)return;
+  const line=L.polyline(t.pts.map(p=>[p[0],p[1]]),{color:'#1f6f4a',weight:5,opacity:.85}).addTo(trackLayer);
+  L.circleMarker(t.pts[0],{radius:7,color:'#fff',weight:3,fillColor:'#1f6f4a',fillOpacity:1}).bindTooltip('Start').addTo(trackLayer);
+  L.circleMarker(t.pts[t.pts.length-1],{radius:7,color:'#fff',weight:3,fillColor:'#b3261e',fillOpacity:1}).bindTooltip('Ziel').addTo(trackLayer);
+  if(fitted!==t.id){map.fitBounds(line.getBounds(),{padding:[24,24]});fitted=t.id}
+  for(const p of S.pois){
+    if(!S.cats[p.c])continue;
+    const hr=hoursAt(p,arrival(p.km));
+    const mk=L.marker([p.lat,p.lon],{title:label(p),keyboard:false,icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="mk${hr&&hr.cls==='closed'?' cl':''}" style="--c:${CAT[p.c].c}">${CAT[p.c].e}</div>`})});
+    mk.bindPopup(()=>popup(p),{autoPanPaddingTopLeft:[10,60]});
+    mk.addTo(poiLayer);markers.set(p,mk);
+  }
+}
+function navUrl(p){
+  return /Android/i.test(navigator.userAgent)?`geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${encodeURIComponent(label(p))})`
+    :`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=bicycling`;
+}
+function popup(p){
+  const arr=arrival(p.km),hr=hoursAt(p,arr);
+  return `<div class="pp"><b>${CAT[p.c].e} ${esc(label(p))}</b>
+    <div class="mut">${esc(CAT[p.c].l)}${p.x?' · '+esc(p.x):''}${p.c==='fr'&&!p.x?' · '+CAT.fr.hint:''}</div>
+    <div class="row">km ${fmtKm(p.km)} · ${fmtM(p.off)} ${p.side>0?'rechts':'links'} der Strecke</div>
+    <div class="row">Ankunft ca. ${when(new Date(arr),new Date())}${hr?` · <span class="${hr.cls}">${esc(hr.txt)}</span>`:''}</div>
+    ${p.o?`<div class="row mut small">${esc(p.o)}</div>`:''}
+    <div class="acts"><a href="${esc(navUrl(p))}" target="_blank" rel="noopener">Navigieren</a><a href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=18/${p.lat}/${p.lon}" target="_blank" rel="noopener">In OSM ansehen</a></div></div>`;
+}
+function showOnMap(p){
+  setView('map');
+  requestAnimationFrame(()=>{map.invalidateSize();map.setView([p.lat,p.lon],Math.max(map.getZoom(),16));markers.get(p)?.openPopup()});
+}
+
+/* ---------- Unterwegs: eigener Standort ---------- */
+let watchId=null;
+function toggleLive(on){
+  S.live=on;$('#locate').setAttribute('aria-pressed',on);
+  if(on&&'geolocation' in navigator){
+    watchId=navigator.geolocation.watchPosition(pos=>{
+      S.me=[pos.coords.latitude,pos.coords.longitude];
+      const pr=project(S.track,S.me);S.curKm=pr.d<=0.3?pr.km:null;
+      if(!meMarker)meMarker=L.marker(S.me,{interactive:false,zIndexOffset:3000,icon:L.divIcon({className:'',iconSize:[0,0],html:'<div class="me"></div>'})}).addTo(map);
+      else meMarker.setLatLng(S.me);
+      render();
+    },e=>{status('Standort nicht verfügbar: '+(e.code===1?'keine Berechtigung':e.message))},{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  }else{
+    if(watchId!=null)navigator.geolocation.clearWatch(watchId);watchId=null;S.curKm=null;S.me=null;
+    if(meMarker){meMarker.remove();meMarker=null}
+  }
+  render();
+}
+
+/* ---------- Ansicht, Bedienung ---------- */
+function setView(v){S.view=v;document.body.dataset.view=v;for(const b of document.querySelectorAll('nav button'))b.setAttribute('aria-pressed',b.dataset.v===v);if(v==='map')setTimeout(()=>map.invalidateSize(),0)}
+for(const b of document.querySelectorAll('nav button'))b.onclick=()=>setView(b.dataset.v);
+$('#locate').onclick=()=>toggleLive(!S.live);
+$('#pois').addEventListener('click',e=>{const li=e.target.closest('li[data-i]');if(li)showOnMap(S.pois[+li.dataset.i])});
+$('#pois').addEventListener('keydown',e=>{if(e.key==='Enter'){const li=e.target.closest('li[data-i]');if(li)showOnMap(S.pois[+li.dataset.i])}});
+$('#sum').addEventListener('click',e=>{
+  const c=e.target.closest('.chip');
+  if(c){S.cats[c.dataset.c]=!S.cats[c.dataset.c];LS.set('cats',S.cats);render();return}
+  if(e.target.id==='chg')openSettings('start');
+});
+
+async function openText(text,fname){
+  try{
+    const t=prepTrack(parseGpx(text,fname));
+    t.id='t'+Date.now().toString(36);
+    useTrack(t,true);
+  }catch(e){alert(e.message)}
+}
+function useTrack(t,isNew){
+  S.track=t;S.pois=[];S.curKm=null;ohCache.clear();
+  if(isNew){saveTour(t);S.start=nextQuarter();setView(innerWidth<900?'list':'map')}
+  render();loadPois();
+}
+async function openFile(f){if(f)openText(await f.text(),f.name)}
+$('#file').onchange=e=>{openFile(e.target.files[0]);e.target.value=''};
+// Ziehen und Ablegen (Desktop)
+let dragN=0;
+addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Files')){dragN++;document.body.classList.add('dragging')}});
+addEventListener('dragleave',()=>{if(--dragN<=0){dragN=0;document.body.classList.remove('dragging')}});
+addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',e=>{e.preventDefault();dragN=0;document.body.classList.remove('dragging');openFile(e.dataTransfer.files[0])});
+// Als Dateityp-Handler installiert (Desktop-Chrome) …
+if('launchQueue' in window)launchQueue.setConsumer(async p=>{if(p.files?.length)openFile(await p.files[0].getFile())});
+// … oder über „Teilen“ (Android): der Service Worker legt die Datei im Cache ab
+async function takeShared(){
+  if(!new URLSearchParams(location.search).has('shared'))return false;
+  history.replaceState(null,'',location.pathname);
+  try{const c=await caches.open('rp-share'),r=await c.match('shared-gpx');if(!r)return false;await c.delete('shared-gpx');
+    await openText(await r.text(),decodeURIComponent(r.headers.get('x-name')||''));return true}catch{return false}
+}
+
+/* ---------- Einstellungen ---------- */
+const toLocalInput=ms=>{const d=new Date(ms),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`};
+$('#catbox').innerHTML=ORDER.map(c=>`<label><input type="checkbox" data-c="${c}"> <span aria-hidden="true">${CAT[c].e}</span> ${esc(CAT[c].l).replace('Reparatur','Reparatur&shy;')}</label>`).join('');
+$('#emptycats').innerHTML=ORDER.map(c=>`<li>${CAT[c].e} ${esc(CAT[c].l)}${CAT[c].hint?` (${CAT[c].hint})`:''}</li>`).join('');
+function openSettings(focus){
+  for(const i of document.querySelectorAll('#catbox input'))i.checked=!!S.cats[i.dataset.c];
+  $('#corr').value=S.corr;$('#corrv').textContent=S.corr+' m';$('#speed').value=S.speed;$('#start').value=toLocalInput(S.start);
+  $('#gapf').value=String(S.gapf);$('#gapw').value=String(S.gapw);
+  renderTours();
+  const m=S.meta||LS.get('meta',null);
+  $('#datainfo').textContent=m?`Datenstand ${fmtDate(m.v)}, ${(Object.values(m.counts||{}).reduce((a,b)=>a+b,0)).toLocaleString('de-DE')} Orte${m.regions?.length?' in '+m.regions.length+(m.regions.length===1?' Region':' Regionen'):''}. Geladen wird nur, was an deinen Strecken liegt.`:'Noch keine Ortsdaten geladen.';
+  $('#export').disabled=!S.track;
+  $('#dlg').showModal();
+  if(focus)$('#'+focus)?.focus();
+}
+$('#opts').onclick=()=>openSettings();
+$('#catbox').onchange=e=>{const c=e.target.dataset.c;if(c){S.cats[c]=e.target.checked;LS.set('cats',S.cats);render()}};
+$('#corr').oninput=e=>{$('#corrv').textContent=e.target.value+' m'};
+$('#corr').onchange=e=>{S.corr=+e.target.value;LS.set('corr',S.corr);loadPois()};
+$('#speed').onchange=e=>{const v=Math.min(45,Math.max(5,+e.target.value||18));S.speed=v;LS.set('speed',v);render()};
+$('#start').onchange=e=>{const v=new Date(e.target.value).getTime();if(isFinite(v)){S.start=v;render()}};
+$('#gapf').onchange=e=>{S.gapf=+e.target.value;LS.set('gapf',S.gapf);render()};
+$('#gapw').onchange=e=>{S.gapw=+e.target.value;LS.set('gapw',S.gapw);render()};
+$('#purge').onclick=async()=>{await purgeData();S.meta=null;$('#datainfo').textContent='Gespeicherte Ortsdaten gelöscht.';if(S.track)loadPois()};
+function renderTours(){
+  const tours=LS.get('tours',[]);
+  $('#notours').hidden=!!tours.length;
+  $('#tours').innerHTML=tours.map(x=>`<li><button type="button" class="open-t" data-id="${esc(x.id)}">${x.id===S.track?.id?'▶ ':''}${esc(x.name)} <span class="mut small">${fmtKm(x.km)} km</span></button><button type="button" class="ghost del-t" data-id="${esc(x.id)}" aria-label="${esc(x.name)} löschen">🗑</button></li>`).join('');
+}
+$('#tours').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const id=b.dataset.id,tours=LS.get('tours',[]);
+  if(b.classList.contains('del-t')){
+    LS.set('tours',tours.filter(x=>x.id!==id));
+    if(S.track?.id===id){S.track=null;S.pois=[];LS.set('cur',null);render()}
+    renderTours();return;
+  }
+  const x=tours.find(x=>x.id===id);if(!x)return;
+  $('#dlg').close();LS.set('cur',id);
+  useTrack(prepTrack({id:x.id,name:x.name,pts:unpackPts(x.pts)}),false);
+};
+
+/* ---------- Export: GPX mit Wegpunkten ---------- */
+const xml=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function exportGpx(){
+  const t=S.track;if(!t)return;
+  const wpts=S.pois.filter(p=>S.cats[p.c]).map(p=>` <wpt lat="${p.lat}" lon="${p.lon}">\n  <name>${xml(label(p).slice(0,30))}</name>\n  <desc>${xml(`${CAT[p.c].l}${p.x?' · '+p.x:''} · km ${fmtKm(p.km)}${p.o?' · '+p.o:''}`)}</desc>\n  <type>${xml(CAT[p.c].l)}</type>\n </wpt>\n`).join('');
+  const trk=t.pts.map(p=>`   <trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}">${isFinite(p[2])?`<ele>${p[2]}</ele>`:''}</trkpt>`).join('\n');
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Radpausen" xmlns="http://www.topografix.com/GPX/1/1">\n <metadata><name>${xml(t.name)}</name><copyright author="OpenStreetMap-Mitwirkende"><license>https://opendatacommons.org/licenses/odbl/</license></copyright></metadata>\n${wpts} <trk>\n  <name>${xml(t.name)}</name>\n  <trkseg>\n${trk}\n  </trkseg>\n </trk>\n</gpx>\n`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));
+  a.download=t.name.replace(/[\\/:*?"<>|]+/g,'_')+' - Radpausen.gpx';
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+$('#export').onclick=exportGpx;
+
+/* ---------- Start ---------- */
+(async()=>{
+  if('serviceWorker' in navigator&&!window.RP_NO_SW)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if(await takeShared())return;
+  const cur=LS.get('cur',null),x=LS.get('tours',[]).find(x=>x.id===cur);
+  if(x)useTrack(prepTrack({id:x.id,name:x.name,pts:unpackPts(x.pts)}),false);
+  else render();
+})();
+</script>
+</body>
+</html>

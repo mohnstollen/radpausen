@@ -1,0 +1,7 @@
+node_modules/
+test-results/
+playwright-report/
+/data/
+/_site/
+__pycache__/
+*.osm.pbf

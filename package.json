@@ -1,0 +1,11 @@
+{
+  "name": "radpausen",
+  "private": true,
+  "description": "Tests für die Radpausen-PWA (die App selbst braucht keinen Build)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

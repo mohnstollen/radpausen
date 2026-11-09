@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="radpausen-test">
+<node id="1" version="1" lat="49.5009000" lon="10.9100000"><tag k="shop" v="bakery"/><tag k="name" v="Bäckerei Am Anger"/><tag k="opening_hours" v="Mo-Sa 06:00-12:00; Su,PH off"/></node>
+<node id="2" version="1" lat="49.5027000" lon="10.9150000"><tag k="shop" v="supermarket"/><tag k="name" v="Testmarkt"/><tag k="opening_hours" v="Mo-Sa 07:00-20:00"/></node>
+<node id="3" version="1" lat="49.4982000" lon="10.9300000"><tag k="amenity" v="fast_food"/><tag k="name" v="Döner Eck"/><tag k="cuisine" v="kebab"/><tag k="opening_hours" v="Mo-Su 11:00-22:00"/></node>
+<node id="4" version="1" lat="49.5009000" lon="10.9400000"><tag k="amenity" v="drinking_water"/></node>
+<node id="5" version="1" lat="49.4991000" lon="10.9500000"><tag k="amenity" v="bicycle_repair_station"/><tag k="service:bicycle:pump" v="yes"/><tag k="service:bicycle:tools" v="yes"/></node>
+<node id="6" version="1" lat="49.5018000" lon="10.9550000"><tag k="shop" v="bicycle"/><tag k="name" v="Radl Huber"/><tag k="service:bicycle:repair" v="yes"/><tag k="opening_hours" v="Tu-Fr 09:00-18:00; Sa 09:00-13:00"/></node>
+<node id="7" version="1" lat="49.5009000" lon="10.9600000"><tag k="amenity" v="shelter"/><tag k="shelter_type" v="picnic_shelter"/></node>
+<node id="8" version="1" lat="49.5009000" lon="10.9620000"><tag k="amenity" v="shelter"/><tag k="shelter_type" v="public_transport"/></node>
+<node id="9" version="1" lat="49.4991000" lon="10.9700000"><tag k="leisure" v="picnic_table"/></node>
+<node id="10" version="1" lat="49.5009000" lon="10.9750000"><tag k="amenity" v="bench"/><tag k="backrest" v="yes"/></node>
+<node id="11" version="1" lat="49.5018000" lon="10.9800000"><tag k="shop" v="convenience"/><tag k="name" v="Dorfladen Kleinberg"/></node>
+<node id="12" version="1" lat="49.5009000" lon="10.9850000"><tag k="amenity" v="drinking_water"/><tag k="drinking_water" v="no"/></node>
+<node id="13" version="1" lat="49.5009000" lon="10.9900000"><tag k="amenity" v="fountain"/><tag k="drinking_water" v="yes"/><tag k="name" v="Marktbrunnen"/></node>
+<node id="14" version="1" lat="49.5270000" lon="10.9200000"><tag k="shop" v="bakery"/><tag k="name" v="Zu weit weg"/></node>
+<node id="15" version="1" lat="49.5009000" lon="10.9950000"><tag k="amenity" v="restaurant"/><tag k="name" v="Kein POI"/></node>
+<node id="16" version="1" lat="49.4982000" lon="10.9450000"></node>
+<node id="17" version="1" lat="49.4982000" lon="10.9470000"></node>
+<node id="18" version="1" lat="49.4972000" lon="10.9470000"></node>
+<node id="19" version="1" lat="49.4972000" lon="10.9450000"></node>
+<node id="20" version="1" lat="49.0000000" lon="10.5000000"></node>
+<node id="21" version="1" lat="49.0000000" lon="11.5000000"></node>
+<node id="22" version="1" lat="50.0000000" lon="11.5000000"></node>
+<node id="23" version="1" lat="50.0000000" lon="10.5000000"></node>
+<way id="1001" version="1"><nd ref="16"/><nd ref="17"/><nd ref="18"/><nd ref="19"/><nd ref="16"/><tag k="landuse" v="cemetery"/><tag k="name" v="Friedhof Testdorf"/></way>
+<way id="1002" version="1"><nd ref="20"/><nd ref="21"/><nd ref="22"/><nd ref="23"/><nd ref="20"/></way>
+<relation id="5000" version="1"><member type="way" ref="1002" role="outer"/><tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="4"/><tag k="ISO3166-2" v="DE-BY"/><tag k="name" v="Bayern"/></relation>
+</osm>
