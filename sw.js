@@ -1,7 +1,7 @@
 // Service Worker: App offline verfügbar machen, angesehene Kartenkacheln merken, „Teilen → Radpausen“ annehmen.
 // Die Ortsdaten (data/) speichert die Seite selbst im Cache „rp-data“.
 const C='rp-shell-v1',TILES='rp-tiles',MAX_TILES=3000;
-const SHELL=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png',
+const SHELL=['./','index.html','bsc300.html','manifest.webmanifest','icon-192.png','icon-512.png',
   'vendor/leaflet/leaflet.js','vendor/leaflet/leaflet.css','vendor/opening_hours.min.js'];
 
 self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting())));
