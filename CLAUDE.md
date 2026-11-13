@@ -9,6 +9,8 @@ Oberfläche und Kommentare.
 
 - `index.html` – die ganze App (Leaflet-Karte, Liste, Einstellungen-Dialog). Kategorien in `CAT`,
   Kürzel identisch mit `scripts/build_data.py`.
+- `bsc300.html` – eigene Seite: GPX per Web Bluetooth an den iGPSPORT BSC300 senden. Kernfunktionen
+  (CNX-Datei, Prüfsumme, Nachricht) im Skript `#core`, Protokoll in `docs/bsc300-protokoll.md`.
 - `sw.js` – App-Cache, Cache angesehener OSM-Kacheln, Web Share Target (`POST ./share`).
 - `data/` – wird nur im Workflow erzeugt (nicht eingecheckt): `meta.json` + `t/<y>_<x>.json`,
   Kachel = floor(lat·10)_floor(lon·10). Zeile: `[kat, lat, lon, name, opening_hours, zusatz]`,

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radpausen – ans BSC300 senden</title>
+<meta name="theme-color" content="#1f6f4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --bg:#f6f5f1; --fg:#1d1d1b; --muted:#66645e; --card:#fff; --line:#d9d6cd; --accent:#0b6b4f; --err:#a12a1c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161715; --fg:#ecebe6; --muted:#a3a198; --card:#20211e; --line:#3a3b36; --accent:#5fc9a3; --err:#ff8f7d; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 8px 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; }
+  section { background: var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:12px; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  label { display:block; font-size:.9rem; color:var(--muted); margin-top:8px; }
+  input[type=text], input[type=file] { width:100%; font:inherit; padding:8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+  button { font:inherit; font-weight:600; padding:12px 16px; border-radius:8px; border:0; background:var(--accent); color:var(--bg); width:100%; margin-top:10px; }
+  button:disabled { opacity:.45; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:8px 0 0; font-size:.95rem; }
+  dt { color:var(--muted); } dd { margin:0; font-variant-numeric: tabular-nums; }
+  progress { width:100%; height:14px; margin-top:10px; }
+  #log { font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); max-height:220px; overflow:auto; margin:8px 0 0; }
+  .err { color: var(--err); } .ok { color: var(--accent); font-weight:600; }
+  a { color: var(--accent); }
+  details { margin-top:8px; font-size:.9rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>GPX ans BSC300 senden</h1>
+  <p class="lead">GPX-Strecke per Bluetooth auf den iGPSPORT BSC300 laden – ohne Konto, ohne Server. Die Datei verlässt dieses Gerät nur per Bluetooth. <a href="./">Zurück zu Radpausen</a></p>
+
+  <section>
+    <h2>1. Route wählen</h2>
+    <input type="file" id="file" accept=".gpx,application/gpx+xml,text/xml,application/xml">
+    <label for="name">Name auf dem Gerät</label>
+    <input type="text" id="name" maxlength="80">
+    <dl id="info" hidden>
+      <dt>Punkte</dt><dd id="i-pts"></dd>
+      <dt>Distanz</dt><dd id="i-dist"></dd>
+      <dt>Anstieg</dt><dd id="i-asc"></dd>
+      <dt>Dateigröße</dt><dd id="i-size"></dd>
+    </dl>
+    <label id="wptrow" hidden><input type="checkbox" id="wpts"> <span id="wptlabel"></span></label>
+  </section>
+
+  <section>
+    <h2>2. Senden</h2>
+    <button id="send" disabled>Gerät wählen und senden</button>
+    <progress id="prog" value="0" max="1" hidden></progress>
+    <p id="status"></p>
+    <details>
+      <summary>Einstellungen und Protokoll</summary>
+      <label><input type="checkbox" id="anydev"> Alle Bluetooth-Geräte anzeigen (falls das BSC300 nicht in der Liste steht)</label>
+      <label><input type="checkbox" id="small"> Kleine Pakete (20 Bytes) – langsamer, falls die Übertragung abbricht</label>
+      <button id="dl" disabled style="background:transparent;color:var(--accent);border:1px solid var(--line)">CNX-Datei nur speichern</button>
+      <div id="log"></div>
+    </details>
+  </section>
+</main>
+
+<script id="core">
+// ---- Kernfunktionen (ohne Browser-APIs, mit Node testbar) ----
+const CRC8_POLY = 0x8c; // Dallas/Maxim, gespiegelt
+function crc8(bytes) {
+  let c = 0;
+  for (const b of bytes) {
+    c ^= b;
+    for (let i = 0; i < 8; i++) c = (c & 1) ? (c >>> 1) ^ CRC8_POLY : c >>> 1;
+  }
+  return c;
+}
+
+function haversine(a, b) {
+  const R = 6371000, rad = Math.PI / 180;
+  const dp = (b.lat - a.lat) * rad, dl = (b.lon - a.lon) * rad;
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dl / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Punkte: [{lat, lon, ele (Meter, optional)}]
+function routeStats(points) {
+  let dist = 0, asc = 0, desc = 0;
+  for (let i = 1; i < points.length; i++) {
+    dist += haversine(points[i - 1], points[i]);
+    const d = (points[i].ele ?? 0) - (points[i - 1].ele ?? 0);
+    if (d > 0) asc += d; else desc += d;
+  }
+  return { dist, asc, desc };
+}
+
+// Tracks-Feld: erster Punkt absolut, zweiter als Differenz, danach zweite
+// Differenzen. Koordinaten in Mikrograd (x10 ergibt 1e-7 Grad), Höhe in cm.
+function encodeTracks(q) { // q: [[latMicro, lonMicro, eleCm], ...]
+  const out = [`${(q[0][0] / 1e6).toFixed(6)},${(q[0][1] / 1e6).toFixed(6)},${q[0][2]}`];
+  for (let i = 1; i < q.length; i++) {
+    let a = q[i][0] - q[i - 1][0], b = q[i][1] - q[i - 1][1];
+    if (i > 1) { a -= q[i - 1][0] - q[i - 2][0]; b -= q[i - 1][1] - q[i - 2][1]; }
+    out.push(`${a * 10},${b * 10},${q[i][2] - q[i - 1][2]}`);
+  }
+  return out.join(';') + ';';
+}
+
+function quantize(points) {
+  return points.map(p => [Math.round(p.lat * 1e6), Math.round(p.lon * 1e6), Math.round((p.ele ?? 0) * 4) * 25]);
+}
+
+const xmlEsc = t => String(t).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+// wpts (optional): [{lat, lon, name}] – landen als <Points> in der Datei.
+// Der Aufbau von <Point> stammt aus der Hersteller-App; ob das Gerät sie anzeigt, ist nicht belegt.
+function buildCnx(points, id, wpts = []) {
+  const s = routeStats(points);
+  const pointsXml = wpts.length
+    ? `<Points>${wpts.map(w => `<Point><Lat>${w.lat.toFixed(6)}</Lat><Lng>${w.lon.toFixed(6)}</Lng><Descr>${xmlEsc(w.name)}</Descr></Point>`).join('')}</Points>`
+    : '<Points />';
+  const xml =
+`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Route>
+<Id>${id}</Id>
+<Distance>${s.dist.toFixed(2)}</Distance>
+<Ascent>${Math.round(s.asc)}</Ascent>
+<Descent>${Math.round(s.desc)}</Descent>
+<Encode>2</Encode>
+<Lang>0</Lang>
+<TracksCount>${points.length}</TracksCount>
+<Tracks>${encodeTracks(quantize(points))}</Tracks>
+<Navs />
+<PointCount>${wpts.length}</PointCount>
+${pointsXml}
+</Route>`;
+  return { bytes: new TextEncoder().encode(xml), stats: s };
+}
+
+// ---- Protobuf (nur was hier gebraucht wird) ----
+function varint(n) { const o = []; n = Math.floor(n); while (n > 127) { o.push((n % 128) | 128); n = Math.floor(n / 128); } o.push(n); return o; }
+const pbInt = (f, v) => [...varint(f << 3), ...varint(v)];
+const pbBytes = (f, b) => [...varint((f << 3) | 2), ...varint(b.length), ...b];
+
+function truncateUtf8(str, max) {
+  const enc = new TextEncoder();
+  let s = str.replace(/\n/g, '');
+  while (enc.encode(s).length > max) s = s.slice(0, -1);
+  return enc.encode(s);
+}
+
+// Komplette Nachricht für Kanal 4: Kopf (20) + Länge (4, BE) + Protobuf + Datei
+function buildRouteMessage({ id, name, fileBytes, distM, ascM }) {
+  const extra = [...pbInt(1, Math.round(distM * 100)), ...pbInt(2, Math.round(ascM * 100)), ...pbInt(3, 0)];
+  const pb = [
+    ...pbInt(1, 21),            // service_type = FILE_OPERATION
+    ...pbInt(2, 3),             // operate_type = ADD
+    ...pbInt(3, 2),             // file_type = ROUTE_PLAN
+    ...pbInt(4, fileBytes.length),
+    ...pbInt(5, id),
+    ...pbBytes(6, truncateUtf8(name, 50)),
+    ...pbBytes(7, [0x63, 0x6e, 0x78]), // "cnx"
+    ...pbInt(10, 0),            // is_temp = false
+    ...pbBytes(11, extra),
+  ];
+  const head = [0x01, 21, 0xff, 0xaa, 3, 0xff, 0xff, 0, 0, crc8([]), 1, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+  head.push(crc8(head));
+  const len = [(pb.length >>> 24) & 255, (pb.length >>> 16) & 255, (pb.length >>> 8) & 255, pb.length & 255];
+  const msg = new Uint8Array(24 + pb.length + fileBytes.length);
+  msg.set(head, 0); msg.set(len, 20); msg.set(pb, 24); msg.set(fileBytes, 24 + pb.length);
+  return msg;
+}
+
+// Einfacher Befehl: Kopf (20) + Protobuf {service_type, operate_type}
+function buildCommand(service, op) {
+  const pb = [...pbInt(1, service), ...pbInt(2, op)];
+  const head = [0x01, service, 0xff, 0xff, op, 0xff, 0xff, (pb.length >> 8) & 255, pb.length & 255, crc8(pb), 1, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+  head.push(crc8(head));
+  return new Uint8Array([...head, ...pb]);
+}
+
+// Antwort des Geräts: Kopf mit Dienst 21, Operation 3; Byte 7 = 0 heißt Erfolg
+function parseReply(b) {
+  if (b.length < 20 || b[1] !== 21 || b[4] !== 3) return null;
+  return { ok: b[7] === 0, status: b[7] };
+}
+// ---- Ende Kernfunktionen ----
+</script>
+
+<script>
+const ALL_SVCS = ['9e', '8e', '7e', '6e'].map(x => `6e400001-b5a3-f393-e0a9-e50e24dcca${x}`);
+
+const $ = id => document.getElementById(id);
+let route = null; // { points, cnx, stats, id }
+
+function log(msg) { $('log').textContent += msg + '\n'; $('log').scrollTop = 1e9; }
+function status(msg, cls = '') { $('status').textContent = msg; $('status').className = cls; }
+
+function parseGpx(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Die Datei ist kein gültiges XML.');
+  let nodes = [...doc.getElementsByTagNameNS('*', 'trkpt')];
+  if (!nodes.length) nodes = [...doc.getElementsByTagNameNS('*', 'rtept')];
+  const pts = nodes.map(n => {
+    const ele = n.getElementsByTagNameNS('*', 'ele')[0];
+    return { lat: parseFloat(n.getAttribute('lat')), lon: parseFloat(n.getAttribute('lon')), ele: ele ? parseFloat(ele.textContent) : 0 };
+  }).filter(p => isFinite(p.lat) && isFinite(p.lon)).map(p => ({ ...p, ele: isFinite(p.ele) ? p.ele : 0 }));
+  if (pts.length < 2) throw new Error('In der Datei wurde kein Track mit mindestens zwei Punkten gefunden.');
+  const nameEl = doc.querySelector('trk > name, rte > name, metadata > name');
+  const wpts = [...doc.getElementsByTagNameNS('*', 'wpt')].map(n => {
+    const nm = n.getElementsByTagNameNS('*', 'name')[0];
+    return { lat: parseFloat(n.getAttribute('lat')), lon: parseFloat(n.getAttribute('lon')), name: nm ? nm.textContent.trim() : 'Wegpunkt' };
+  }).filter(w => isFinite(w.lat) && isFinite(w.lon));
+  return { pts, wpts, name: nameEl ? nameEl.textContent.trim() : '' };
+}
+
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  route = null; $('send').disabled = true; $('dl').disabled = true; $('info').hidden = true; $('wptrow').hidden = true; status('');
+  if (!f) return;
+  try {
+    const { pts, wpts, name } = parseGpx(await f.text());
+    const id = 1000000000 + Math.floor(Date.now() / 1000) % 1000000000;
+    route = { points: pts, wpts, id };
+    $('wpts').checked = false;
+    $('wptrow').hidden = !wpts.length;
+    $('wptlabel').textContent = `${wpts.length} Wegpunkte mitsenden (Versuch – ob der BSC300 sie anzeigt, ist offen)`;
+    rebuild();
+    const { stats } = route;
+    $('name').value = name || f.name.replace(/\.gpx$/i, '');
+    $('i-pts').textContent = pts.length;
+    $('i-dist').textContent = (stats.dist / 1000).toFixed(1) + ' km';
+    $('i-asc').textContent = Math.round(stats.asc) + ' m';
+    $('info').hidden = false; $('send').disabled = false; $('dl').disabled = false;
+  } catch (err) { status(err.message, 'err'); }
+});
+
+function rebuild() {
+  const { bytes, stats } = buildCnx(route.points, route.id, $('wpts').checked ? route.wpts : []);
+  route.cnx = bytes; route.stats = stats;
+  $('i-size').textContent = (bytes.length / 1024).toFixed(1) + ' kB';
+}
+$('wpts').addEventListener('change', () => { if (route) rebuild(); });
+
+$('dl').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([route.cnx], { type: 'application/xml' }));
+  a.download = ($('name').value || 'route') + '.cnx'; a.click();
+});
+
+$('send').addEventListener('click', async () => {
+  if (!navigator.bluetooth) { status('Dieser Browser kann kein Web Bluetooth. Nimm Chrome auf Android oder am PC.', 'err'); return; }
+  $('send').disabled = true; $('prog').hidden = false; $('prog').value = 0;
+  let device;
+  try {
+    const opts = $('anydev').checked
+      ? { acceptAllDevices: true, optionalServices: ALL_SVCS }
+      : { filters: [{ namePrefix: 'BSC' }, { namePrefix: 'iGS' }], optionalServices: ALL_SVCS };
+    device = await navigator.bluetooth.requestDevice(opts);
+    log('Gerät: ' + device.name);
+    status('Verbinde …');
+    const gatt = await device.gatt.connect();
+    const hex = b => [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // Alle vier Kanäle öffnen und mithören, wie es die Original-App tut
+    const waiters = [];
+    const waitFor = (test, ms, what) => new Promise((resolve, reject) => {
+      const w = { test, resolve };
+      w.timer = setTimeout(() => { waiters.splice(waiters.indexOf(w), 1); reject(new Error(what)); }, ms);
+      waiters.push(w);
+    });
+    const ch = {};
+    for (const [i, suffix] of ['9e', '8e', '7e', '6e'].entries()) {
+      const n = i + 1, base = `-b5a3-f393-e0a9-e50e24dcca${suffix}`;
+      try {
+        const svc = await gatt.getPrimaryService('6e400001' + base);
+        const rx = await svc.getCharacteristic('6e400002' + base);
+        const tx = await svc.getCharacteristic('6e400003' + base);
+        tx.addEventListener('characteristicvaluechanged', ev => {
+          const b = new Uint8Array(ev.target.value.buffer.slice(ev.target.value.byteOffset, ev.target.value.byteOffset + ev.target.value.byteLength));
+          log(`<- Kanal ${n} (${b.length}): ${hex(b.slice(0, 28))}`);
+          for (const w of [...waiters]) {
+            const r = w.test(b, n);
+            if (r) { clearTimeout(w.timer); waiters.splice(waiters.indexOf(w), 1); w.resolve(r); }
+          }
+        });
+        await tx.startNotifications();
+        ch[n] = rx;
+        log(`Kanal ${n} offen (schreiben: ${rx.properties.writeWithoutResponse ? 'ohne' : 'mit'} Antwort)`);
+      } catch (e) { log(`Kanal ${n} nicht verfügbar: ${e.message}`); }
+    }
+    if (!ch[4]) throw new Error('Der Datei-Kanal des Geräts wurde nicht gefunden.');
+    const write = (c, data) => c.properties.writeWithoutResponse ? c.writeValueWithoutResponse(data) : c.writeValueWithResponse(data);
+
+    // Testfrage wie die Original-App: Gerätestatus abfragen
+    if (ch[1]) {
+      status('Prüfe, ob das Gerät antwortet …');
+      const ping = buildCommand(13, 1);
+      log('-> Kanal 1: ' + hex(ping));
+      const pong = waitFor((b, n) => n === 1 && b[1] === 13, 5000, 'PING');
+      await write(ch[1], ping);
+      try { await pong; log('Gerät antwortet auf die Statusabfrage.'); }
+      catch { throw new Error('Das Gerät antwortet auf gar keine Anfrage. Vermutlich ist die Verbindung nicht gekoppelt (verschlüsselt).'); }
+    }
+
+    const msg = buildRouteMessage({
+      id: route.id, name: $('name').value || 'Route', fileBytes: route.cnx,
+      distM: route.stats.dist, ascM: route.stats.asc,
+    });
+    const chunk = $('small').checked ? 20 : 244;
+    log(`Sende ${msg.length} Bytes in Paketen zu ${chunk} auf Kanal 4`);
+    status('Sende …');
+    const reply = waitFor((b, n) => parseReply(b), 20000 + msg.length / chunk * 30, 'Das Gerät hat die Datei nicht bestätigt.');
+    reply.catch(() => {});
+    for (let o = 0; o < msg.length; o += chunk) {
+      await write(ch[4], msg.subarray(o, o + chunk));
+      await sleep(12);
+      $('prog').value = Math.min(1, (o + chunk) / msg.length);
+    }
+    status('Warte auf Bestätigung …');
+    const r = await reply;
+    if (r.ok) status('Die Route ist auf dem Gerät.', 'ok');
+    else status('Das Gerät hat die Route abgelehnt (Status ' + r.status + ').', 'err');
+  } catch (err) {
+    log('Fehler: ' + err);
+    if (/globally disabled/i.test(err.message)) {
+      status('Web Bluetooth ist in diesem Browser abgeschaltet. In Brave: brave://flags/#brave-web-bluetooth-api einschalten und den Browser neu starten.', 'err');
+    } else if (err.name === 'NotFoundError' && /cancel/i.test(err.message)) {
+      status('Kein Gerät gewählt.', 'err');
+    } else {
+      status('Fehler: ' + err.message, 'err');
+    }
+  } finally {
+    try { device?.gatt?.disconnect(); } catch {}
+    $('send').disabled = !route; $('prog').hidden = true;
+  }
+});
+</script>
+</body>
+</html>

@@ -22,6 +22,17 @@ aufbereitet; es gibt keine Abfragen an Overpass oder kostenpflichtige Dienste.
   vorbeigefahrene Orte werden ausgegraut, oben steht der Abstand zum nächsten Ort je Kategorie.
 - **Export:** Strecke plus angezeigte Orte als GPX-Wegpunkte, z. B. für den Radcomputer.
 
+## An den iGPSPORT BSC300 senden
+
+`bsc300.html` lädt eine GPX-Strecke per Web Bluetooth direkt auf den Radcomputer – ohne die
+Hersteller-App, ohne Konto, ohne Server. Erreichbar über *⚙️ Einstellungen → Export* oder direkt
+unter `…/bsc300.html`. Braucht Chrome (Android oder Desktop); in Brave vorher
+`brave://flags/#brave-web-bluetooth-api` einschalten, unter Linux zusätzlich
+`chrome://flags/#enable-experimental-web-platform-features`. Die Hersteller-App darf dabei nicht
+mit dem Gerät verbunden sein. Das Protokoll steht in [docs/bsc300-protokoll.md](docs/bsc300-protokoll.md).
+
+Wegpunkte aus der GPX-Datei lassen sich versuchsweise mitsenden; ob der BSC300 sie anzeigt, ist offen.
+
 ## Offline
 
 - Die App selbst cacht der Service Worker.
